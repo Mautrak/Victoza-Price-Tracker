@@ -7,6 +7,9 @@ import threading
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import tkinter as tk
 from tkinter import ttk
 
@@ -150,6 +153,7 @@ def main():
     except KeyboardInterrupt:
         print("Script terminated by user. Cleaning up...")
         stop_event.set()
+canvas_widget = None
 def create_gui():
     root = tk.Tk()
     root.title("Price Tracker")
@@ -164,6 +168,28 @@ def create_gui():
     tree.heading('#6', text='Percentage Change')
     tree.pack(fill='both', expand=True)
 
+    def plot_graph():
+        data = fetch_from_db()
+        # Get the current date
+        today = datetime.now().date()
+        # Calculate the date range: 5 weeks before and after the current date
+        start_date = today - timedelta(weeks=5)
+        end_date = today + timedelta(weeks=5)
+        # Filter the data to only include entries within the date range
+        filtered_data = [row for row in data if start_date <= row[6] <= end_date]
+        # Extract dates and prices for the filtered data
+        dates = [row[6] for row in filtered_data]
+        prices = [row[2] for row in filtered_data]
+        # Plot the data
+        fig, ax = plt.subplots()
+        ax.plot(dates, prices, marker='o', linestyle='-')
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Price")
+        ax.set_title("Price Trend")
+        # Explicitly set x-axis limits
+        ax.set_xlim([start_date, end_date])
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%d-%m'))
+        return fig
     def update_data():
         # Clear existing data from the treeview
         for row in tree.get_children():
@@ -171,6 +197,14 @@ def create_gui():
         # Fetch and insert new data
         for row in fetch_from_db():
             tree.insert('', 'end', text=row[0], values=(row[1], row[6], row[5], row[2], row[3], f"{row[4]:.2f}%"))
+        global canvas_widget  # Add this line
+        if canvas_widget:
+            canvas_widget.destroy()
+        fig = plot_graph()
+        canvas = FigureCanvasTkAgg(fig, master=root)
+        canvas_widget = canvas.get_tk_widget()
+        canvas_widget.pack()
+        canvas.draw()
 
     def periodic_update():
         update_data()
