@@ -31,7 +31,7 @@ def main():
     try:
         workbook = openpyxl.load_workbook(EXCEL_FILE)
         sheet = workbook.active
-        for row in sheet.iter_rows(values_only=True):
+        for row in sheet.iter_rows(values_only=True, min_row=2):  # Skip the header row
             if datetime.strptime(row[DATE_COLUMN - 1], '%Y-%m-%d').date() == today:
                 print(f"Already checked prices for {today}. Exiting.")
                 return
