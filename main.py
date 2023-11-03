@@ -7,6 +7,9 @@ import threading
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchElementException
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -24,6 +27,7 @@ sqlite3.register_converter("DATE", convert_date)
 # Constants
 URL1 = "https://liki24.com/uk/p/viktoza-r-r-d-6-mgml-kartridzh-vlozh-v-shpric-ruchku-3-ml-2-novo-nordisk/"
 URL2 = "https://tabletki.ua/Виктоза/25550/"
+BUTTON_XPATH1 = "/html/body/div[3]/div[1]/div[5]/div[2]/div[2]/div[3]/div[2]/div[1]/div[2]"
 XPATH1 = "/html/body/div[3]/div[1]/div[5]/div[2]/div[2]/div[3]/div[2]/div[1]/div[3]/span"
 XPATH2 = "/html/body/div[2]/main/div[1]/div[1]/div[1]/article/div/div/section[1]/div/div[2]/div[1]/div[2]/div[1]/div[1]/span"
 DB_FILE = "prices.db"
@@ -43,12 +47,39 @@ def wait_until_next_run():
         if stop_event.is_set():
             return
         time.sleep(60)
-def get_price(driver, url, xpath):
+
+
+def get_price(driver, url, xpath, button_xpath=None, css_selector=None):
     driver.get(url)
-    price_text = driver.find_element(By.XPATH, xpath).text
-    price = re.search(r'[\d\s]+[\.,]?\d*', price_text).group()
-    price = price.replace(' ', '').replace(',', '.')
-    return float(price)
+    # Check if a button needs to be clicked before getting the price
+    if button_xpath:
+        try:
+            # Find and click the button
+            button = driver.find_element(By.XPATH, button_xpath)
+            button.click()
+        except Exception as e:
+            print(f"Failed to click button at {button_xpath}: {e}")
+
+    # Extract the price
+    try:
+        if css_selector:
+            # Wait for up to 10 seconds before throwing a TimeoutException
+            price_element = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, css_selector))
+            )
+        else:
+            price_element = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, xpath))
+            )
+
+        price_text = price_element.text
+        price = re.search(r'[\d\s]+[\.,]?\d*', price_text).group()
+        price = price.replace(' ', '').replace(',', '.')
+        return float(price)
+    except Exception as e:
+        print(f"Failed to get price from {xpath if not css_selector else css_selector}: {e}")
+        return float('inf')
+
 def setup_db():
     conn = sqlite3.connect(DB_FILE, detect_types=sqlite3.PARSE_DECLTYPES)
     cursor = conn.cursor()
@@ -108,48 +139,49 @@ def fetch_from_db():
     conn.close()
     return data
 
+def update_price_data():
+    # Removed the while loop
+    today = datetime.now().date()
+    while not is_connected():
+        print("No internet connection. Waiting...")
+        time.sleep(60)
 
+    options = FirefoxOptions()
+ #   options.add_argument("--headless")
+    driver = webdriver.Firefox(options=options)
+
+    print("Connecting to URL1...")
+    try:
+        price1 = get_price(driver, URL1, None, BUTTON_XPATH1, ".pharmacy-pickup__prices > span:nth-child(1)")
+        print(f"Successfully reached URL1. Price found: {price1}")
+    except Exception as e:
+        print(f"Failed to get price from URL1: {e}")
+        price1 = float('inf')
+
+    print("Connecting to URL2...")
+    try:
+        price2 = get_price(driver, URL2, XPATH2)
+        print(f"Successfully reached URL2. Price found: {price2}")
+    except Exception as e:
+        print(f"Failed to get price from URL2: {e}")
+        price2 = float('inf')
+
+    final_price = min(price1, price2)
+    site_used = "Liki24" if final_price == price1 else "Tabletki"
+
+    original_price = 4185.00
+    if final_price <= original_price * 0.7:
+        print("Alert: Price dropped significantly!")
+
+    print("Updating the SQLite database with the price.")
+    write_to_db(final_price, site_used)  # Store data in SQLite
+
+    driver.quit()
+    print("Data updated.")
 def main():
     try:
         setup_db()  # Initialize the database
-        while not stop_event.is_set():
-            today = datetime.now().date()
-            while not is_connected():
-                print("No internet connection. Waiting...")
-                time.sleep(60)
-
-            options = FirefoxOptions()
-            options.add_argument("--headless")
-            driver = webdriver.Firefox(options=options)
-
-            print("Connecting to URL1...")
-            try:
-                price1 = get_price(driver, URL1, XPATH1)
-                print(f"Successfully reached URL1. Price found: {price1}")
-            except Exception as e:
-                print(f"Failed to get price from URL1: {e}")
-                price1 = float('inf')
-
-            print("Connecting to URL2...")
-            try:
-                price2 = get_price(driver, URL2, XPATH2)
-                print(f"Successfully reached URL2. Price found: {price2}")
-            except Exception as e:
-                print(f"Failed to get price from URL2: {e}")
-                price2 = float('inf')
-
-            final_price = min(price1, price2)
-            site_used = "Liki24" if final_price == price1 else "Tabletki"
-
-            original_price = 4185.00
-            if final_price <= original_price * 0.7:
-                print("Alert: Price dropped significantly!")
-
-            print("Updating the SQLite database with the price.")
-            write_to_db(final_price, site_used)  # Store data in SQLite
-
-            driver.quit()
-            print("Done for today. Waiting until tomorrow.")
+        while not stop_event.is_set():  # Keep this loop
             wait_until_next_run()
     except KeyboardInterrupt:
         print("Script terminated by user. Cleaning up...")
@@ -191,14 +223,15 @@ def create_gui():
         ax.set_xlim([start_date, end_date])
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%d-%m'))
         return fig
-    def update_data():
+
+    def update_gui():
         # Clear existing data from the treeview
         for row in tree.get_children():
             tree.delete(row)
         # Fetch and insert new data
         for row in fetch_from_db():
             tree.insert('', 'end', text=row[0], values=(row[1], row[6], row[5], row[2], row[3], f"{row[4]:.2f}%"))
-        global canvas_widget  # Add this line
+        global canvas_widget
         if canvas_widget:
             canvas_widget.destroy()
         fig = plot_graph()
@@ -208,8 +241,17 @@ def create_gui():
         canvas.draw()
         plt.close(fig)
 
+    def update_data():
+        def threaded_update():
+            # Call update_price_data to fetch new data
+            update_price_data()
+            # Update the GUI
+            root.after(0, update_gui)
+
+        # Run the time-consuming task in a separate thread
+        threading.Thread(target=threaded_update).start()
     def periodic_update():
-        update_data()
+        update_gui()
         root.after(10000, periodic_update)
 
     def on_closing():
