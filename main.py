@@ -59,7 +59,7 @@ def main():
         except FileNotFoundError:
             workbook = openpyxl.Workbook()
             sheet = workbook.active
-            sheet.append(["Price", "Date", "Site"])
+            sheet.append(["Cost of Victoza", "Date", "Site"])
             workbook.save(EXCEL_FILE)
 
         while not is_connected():
@@ -86,9 +86,9 @@ def main():
             price2 = float('inf')
 
         final_price = min(price1, price2)
-        site_used = URL1 if final_price == price1 else URL2
+        site_used = "Liki24" if final_price == price1 else "Tabletki"
 
-        original_price = 1000.00
+        original_price = 4185.00
         if final_price <= original_price * 0.7:
             winsound.Beep(ALARM_FREQUENCY, ALARM_DURATION)
 
