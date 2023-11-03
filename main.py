@@ -2,6 +2,7 @@ import re
 import openpyxl
 import requests
 import time
+import threading
 from datetime import datetime, timedelta
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -20,6 +21,8 @@ PRICE_COLUMN = 1
 DATE_COLUMN = 2
 SITE_COLUMN = 3
 
+stop_event = threading.Event()
+
 def is_connected():
     try:
         requests.get("https://www.google.com", timeout=5)
@@ -31,6 +34,8 @@ def wait_until_next_run():
     now = datetime.now()
     next_run = datetime(now.year, now.month, now.day, 11, 0) + timedelta(days=1)
     while datetime.now() < next_run:
+        if stop_event.is_set():
+            return
         time.sleep(60)
 
 def get_price(driver, url, xpath):
@@ -41,7 +46,7 @@ def get_price(driver, url, xpath):
     return float(price)
 
 def main():
-    while True:
+    while not stop_event.is_set():
         today = datetime.now().date()
         try:
             workbook = openpyxl.load_workbook(EXCEL_FILE)

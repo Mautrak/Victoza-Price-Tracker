@@ -6,6 +6,7 @@ import socket
 import os
 import sys
 import time
+import threading
 
 class VictozaPriceTrackerService(win32serviceutil.ServiceFramework):
     _svc_name_ = 'VictozaPriceTrackerService'
@@ -16,12 +17,13 @@ class VictozaPriceTrackerService(win32serviceutil.ServiceFramework):
         win32serviceutil.ServiceFramework.__init__(self, args)
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
         socket.setdefaulttimeout(60)
-        self.is_alive = True
 
     def SvcStop(self):
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
-        self.is_alive = False
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        from main import stop_event
+        stop_event.set()
 
     def SvcDoRun(self):
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
@@ -32,9 +34,7 @@ class VictozaPriceTrackerService(win32serviceutil.ServiceFramework):
     def main(self):
         sys.path.append(os.path.dirname(os.path.abspath(__file__)))
         from main import main
-        while self.is_alive:
-            main()
-            time.sleep(60)
+        main()
 
 if __name__ == '__main__':
     if len(sys.argv) == 1:
