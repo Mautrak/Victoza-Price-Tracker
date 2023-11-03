@@ -54,6 +54,8 @@ def setup_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         drug TEXT,
         price REAL,
+        price_change REAL,
+        percentage_change REAL,
         site TEXT,
         date DATE
     )
@@ -70,12 +72,26 @@ def write_to_db(price, site):
     cursor.execute("SELECT * FROM prices WHERE date = ?", (today,))
     existing_entry = cursor.fetchone()
 
+    # Check for an entry from yesterday
+    yesterday = today - timedelta(days=1)
+    cursor.execute("SELECT * FROM prices WHERE date = ?", (yesterday,))
+    yesterday_entry = cursor.fetchone()
+
+    # Calculate price change and percentage change
+    if yesterday_entry:
+        price_change = price - yesterday_entry[2]
+        percentage_change = (price_change / yesterday_entry[2]) * 100
+    else:
+        price_change = 0
+        percentage_change = 0
+
     if existing_entry:
-        cursor.execute("UPDATE prices SET price = ?, site = ? WHERE date = ?", (price, site, today))
+        cursor.execute("UPDATE prices SET price = ?, price_change = ?, percentage_change = ?, site = ? WHERE date = ?",
+                       (price, price_change, percentage_change, site, today))
         print("Updated existing entry for today.")
     else:
-        cursor.execute("INSERT INTO prices (drug, price, site, date) VALUES (?, ?, ?, ?)",
-                       ('Victoza', price, site, today))
+        cursor.execute("INSERT INTO prices (drug, price, price_change, percentage_change, site, date) VALUES (?, ?, ?, ?, ?, ?)",
+                       ('Victoza', price, price_change, percentage_change, site, today))
         print("Added new entry for today.")
 
     conn.commit()
@@ -138,12 +154,14 @@ def create_gui():
     root = tk.Tk()
     root.title("Price Tracker")
 
-    tree = ttk.Treeview(root, columns=('Drug', 'Date', 'Site', 'Price'))
+    tree = ttk.Treeview(root, columns=('Drug', 'Date', 'Site', 'Price', 'Price Change', 'Percentage Change'))
     tree.heading('#0', text='ID')
     tree.heading('#1', text='Drug')
     tree.heading('#2', text='Date')
     tree.heading('#3', text='Site')
     tree.heading('#4', text='Price')
+    tree.heading('#5', text='Price Change')
+    tree.heading('#6', text='Percentage Change')
     tree.pack(fill='both', expand=True)
 
     def update_data():
@@ -152,7 +170,7 @@ def create_gui():
             tree.delete(row)
         # Fetch and insert new data
         for row in fetch_from_db():
-            tree.insert('', 'end', text=row[0], values=(row[1], row[4], row[2], row[3]))
+            tree.insert('', 'end', text=row[0], values=(row[1], row[6], row[5], row[2], row[3], f"{row[4]:.2f}%"))
 
     def periodic_update():
         update_data()
