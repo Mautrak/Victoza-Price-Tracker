@@ -119,6 +119,7 @@ def main():
                 time.sleep(60)
 
             options = FirefoxOptions()
+            options.add_argument("--headless")
             driver = webdriver.Firefox(options=options)
 
             print("Connecting to URL1...")
@@ -205,6 +206,7 @@ def create_gui():
         canvas_widget = canvas.get_tk_widget()
         canvas_widget.pack()
         canvas.draw()
+        plt.close(fig)
 
     def periodic_update():
         update_data()
