@@ -147,7 +147,7 @@ def update_price_data():
         time.sleep(60)
 
     options = FirefoxOptions()
- #   options.add_argument("--headless")
+    options.add_argument("--headless")
     driver = webdriver.Firefox(options=options)
 
     print("Connecting to URL1...")
